@@ -18,6 +18,16 @@ import os
 import random
 from key_codes import *
 from pyaosocket import AoResolver
+import camera
+from time import localtime
+
+# Import audio - for text to speech
+SPEECH_ENABLED = False
+try:
+    import audio
+    SPEECH_ENABLED = True
+except:
+    print u"Failed to import audio"
 
 # Import appropriate version of socket depening on python
 from e32 import pys60_version
@@ -128,10 +138,10 @@ class ManageRulesClass(object):
            
         if (self.PULSE_TONE == True):
            #1print "Tone Rule: ON"
-           self.textGUI.drawText("Tone Rule: ON\n")
+           self.textGUI.drawText("Speech Rule: ON\n")
         else:
            #1print "Tone Rule: OFF"
-           self.textGUI.drawText("Tone Rule: OFF\n")
+           self.textGUI.drawText("Speech Rule: OFF\n")
            
         #1print u"--------------"
         self.textGUI.drawText("---------\n")
@@ -225,7 +235,7 @@ class ManageRulesClass(object):
 
         # Present selection list to user
         VIBRATE_CHOSEN, FLASH_CHOSEN, SNAP_CHOSEN, TONE_CHOSEN = 0, 1, 2, 3
-        L = [u"Vibrate", u"Flash", u"Snap", u"Tone"]
+        L = [u"Vibrate Rule", u"Flash Rule", u"Snap Rule", u"Speech Rule"]
         aRulesTuple = appuifw.multi_selection_list(L, style='checkbox', search_field=0)
         aRulesList = list(aRulesTuple)
 
@@ -298,38 +308,85 @@ class BTServerClass(object):
         self.active = status
 
     activeSetting = property(getActive, setActive)
+    
+    # PHONE BASED ACTIONS -----------
+    def vibrateMe(self):
+        try:
+            misty.vibrate(500, 100)
+        except Exception, error:
+            self.mainTextGUI.drawText("Error running vibrate: %s\n" % str(error))
+            self.mainTextGUI.reDrawGUI()
 
-    # Trigger actions when Pulse recieved (follow active pulse rules)
-    def triggerPulse(self):
-        #1print u"Pulse triggered"
-
-        if( self.ruleMan.PULSE_VIBRATE == True ):
-            #1print u"I am vibrating"
-            self.mainTextGUI.drawText("I am vibrating\n")
+    def flashMe(self):
+        try:
+            image = camera.take_photo(exposure='night', flash='forced', size=(640, 480))
+            tm = localtime()
+            fn='E:\\PYTHON\\SwarmFiles\\img%02d%02d%02d%02d.jpg' % (tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)
+            image.save(filename=fn)
+        except:
+            self.mainTextGUI.drawText("Error triggering flash\n")
             self.mainTextGUI.reDrawGUI()
             
-            try:
-                misty.vibrate(500, 100)
-            except Exception, error:
-                print u"Error running vibrate: %s" % str(error)
-
-        if( self.ruleMan.PULSE_FLASH == True ):
-            #1print u"I am flashing"
-            #1appuifw.note(u"FLASH", 'info')
-            self.mainTextGUI.drawText("I am flashing\n")
+    def speechMe(self, toBeSaid):
+        # If phone capable of speech then say message
+        if(SPEECH_ENABLED == True):
+            audio.say(toBeSaid)
+        else:
+            self.mainTextGUI.drawText("Speech disabled\n")
             self.mainTextGUI.reDrawGUI()
 
-        if( self.ruleMan.PULSE_SNAP == True ):
-            #1print u"I am snapping"
-            #1appuifw.note(u"SNAP", 'info')
-            self.mainTextGUI.drawText("I am snapping\n")
+    # Trigger actions when Pulse recieved (follow active pulse rules)
+    # If recievedMessage is "Pulse", run local actions
+    # If recievedMessage starts with "M" then speak message
+    # If recievedMessage begins with "R" then trigger recieved rules
+    def triggerPulse(self, recievedMessage):
+        global SPEECH_ENABLED
+        # DEBUG ONLY
+        self.mainTextGUI.drawText("Recieved: %s\n" %recievedMessage)
+        self.mainTextGUI.reDrawGUI()
+
+        # If recieve PULSE then..
+        if(recievedMessage == "Pulse"):
+            self.mainTextGUI.drawText("Receieved a PULSE\n")
             self.mainTextGUI.reDrawGUI()
 
-        if( self.ruleMan.PULSE_TONE == True ):
-            #1print u"I am making a tone"
-            #1appuifw.note(u"TONE", 'info')
-            self.mainTextGUI.drawText("I am making a tone\n")
+            # If VIBRATE is active then..
+            if( self.ruleMan.PULSE_VIBRATE == True ):
+                self.vibrateMe()
+
+            # If FLASH is active then...
+            if( self.ruleMan.PULSE_FLASH == True ):
+                self.flashMe()
+
+            # If SNAP is active then..
+            if( self.ruleMan.PULSE_SNAP == True ):
+                #1print u"I am snapping"
+                #1appuifw.note(u"SNAP", 'info')
+                self.mainTextGUI.drawText("I am snapping\n")
+                self.mainTextGUI.reDrawGUI()
+
+            # If TONE is active then..
+            if( self.ruleMan.PULSE_TONE == True ):
+                self.speechMe(recievedMessage)
+
+        elif(recievedMessage[0] == "M"):
+            self.mainTextGUI.drawText("Receieved a MESSAGE\n")
             self.mainTextGUI.reDrawGUI()
+            endStr = len(recievedMessage)
+            stringForSaying = str(recievedMessage[1:endStr])
+            self.speechMe(stringForSaying)
+            self.mainTextGUI.drawText("Saying %s\n" % recievedMessage[1:endStr])
+            self.mainTextGUI.reDrawGUI()
+
+        # Try and take a photo of the user with front cam
+        """try:
+            sneakImage = camera.take_photo(mode = "RGB", size = (176, 144), exposure = "auto", position = 1)
+            tm = localtime()
+            fn='E:\\PYTHON\\SwarmFiles\\img%02d%02d%02d%02d.jpg' % (tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)
+            sneakImage.save(filename=fn)
+        except Exception, e:
+            self.mainTextGUI.drawText("Could not snap user\n")
+            self.mainTextGUI.reDrawGUI()"""
 
     # Fuction listens for .recv data on the socket
     def timeout_h(self):
@@ -346,9 +403,10 @@ class BTServerClass(object):
             #pass
         else:
             try:
-                self.triggerPulse()
+                self.triggerPulse(rxmsg)
             except:
-                print u"Unable to run triggerPulse"
+                self.mainTextGUI.drawText("Unable to run triggerPulse\n")
+                self.mainTextGUI.reDrawGUI()
 
         self.lock.signal()
 
@@ -429,7 +487,7 @@ class BTClientClass(object):
         return n
 
     # Setup timeout connection function
-    def timeout_connect_send(self, sock, hostAddr, hostName,  porty, timeout):
+    def timeout_connect_send(self, sock, hostAddr, hostName,  porty, timeout, sendMessage):
         closeit = lambda : sock.close()
         w = e32.Ao_timer()
         w.after(timeout, closeit)
@@ -447,7 +505,8 @@ class BTClientClass(object):
             self.myMainTextGUI.reDrawGUI()
             return False
         
-        sock.send("pulse")
+        #1sock.send("HELP ME")
+        sock.send(sendMessage)
         #1print u"Sent Pulse"
         self.clientTimer.cancel()
         self.clientTimer.after(0.3)
@@ -459,38 +518,45 @@ class BTClientClass(object):
         w.cancel()
 
     # Send to Swarm function - Iterates SWARM dictionary sending pulse to all
-    def sendToSwarm(self):
+    def sendToSwarm(self, theMessage):
         global THE_SWARM_DICT
 
         #1print u"Sending to Swarm List"
         self.myMainTextGUI.drawText("Sending to Swarm List\n")
         self.myMainTextGUI.reDrawGUI()
-
-        # Iterate through
-        for (k, v) in THE_SWARM_DICT.iteritems():
         
-            # TESTING: Filter out unwanted bt devices
-            if( k == u"Odbar the great" ):
-                print u"Excluding odbar"
-                continue
+        # If THE_SWARM_DICT empty then run BT SEARCH function
+        swarm_length = len(THE_SWARM_DICT)
+        if (swarm_length == 0):
+            self.myMainTextGUI.drawText("Swarm list empty, running discovery.\n")
+            self.myMainTextGUI.reDrawGUI()
+            self.btSearch()
 
-            # Ensure no current connections
-            if( self.CONNECTED == False ):
+        else:
+            # Iterate through
+            for (k, v) in THE_SWARM_DICT.iteritems():
+                # Ensure no current connections
+                if( self.CONNECTED == False ):
+                    clientSocket = socket.socket(socket.AF_BT, socket.SOCK_STREAM)
 
-                clientSocket = socket.socket(socket.AF_BT, socket.SOCK_STREAM)
+                    # Run connect & send function - (socket, hostaddr, hostName, port, timeout, message)
+                    self.timeout_connect_send(clientSocket, v, k, port, 5, theMessage)
 
-                # Run connect & send function - (socket, hostaddr, hostName, port, timeout)
-                self.timeout_connect_send(clientSocket, v, k, port, 5)
-                
-                self.clientTimer.cancel()
-                self.clientTimer.after(0.5)
-            else:
-		print u"Already connected to server";
+                    self.clientTimer.cancel()
+                    self.clientTimer.after(0.5)
+                else:
+  		    #1print u"Already connected to server";
+  		    self.myMainTextGUI.drawText("Already connected to server\n")
+                    self.myMainTextGUI.reDrawGUI()
+
+        self.myMainTextGUI.drawText("Finished sending.\n")
+        self.myMainTextGUI.drawText("Listening for incoming connections..\n")
+        self.myMainTextGUI.reDrawGUI()
 
     # Callback run from Aosocket BT resolver
     def callBack(self, error, mac, name, dummy):
         if error == -25: # KErrEof (no more devices)
-            print "no more"
+            #1print "no more"
             self.cont = None
         elif error:
             raise
@@ -521,7 +587,10 @@ class BTClientClass(object):
 
         try:
             self.resolver.open()
-            print u"Searching for devices..."
+            #1print u"Searching for devices..."
+            self.myMainTextGUI.drawText("Searching for devices...\n")
+            self.myMainTextGUI.reDrawGUI()
+
             self.currentlySearching = True
             self.cont = lambda: self.resolver.discover(self.callBack, None)
             while self.cont:
@@ -535,21 +604,12 @@ class BTClientClass(object):
         # Update global swarm list with temp device list
         THE_SWARM_DICT = self.TEMP_DICLIST
         
-        print u"Search complete"
+        #1print u"Search complete"
+        self.myMainTextGUI.drawText("Search complete\n")
+        self.myMainTextGUI.reDrawGUI()
 
         # Check running swarm sandbox service on discovered devices
         #self.check_device_services()
-
-    def popAction(self):
-        userAction1 = appuifw.popup_menu([u"Send Pulse"])
-        if userAction1 == 0:
-             self.sendToSwarm()
-             self.clientTimer.after(1)
-             self.popAction()
-        #1elif userAction1 == 1:
-             #1mySocket.close()
-    #popAction()
-
 
 # MAIN CLASS - BASIC APP FUNCTIONS HERE --------------
 # -------------------------------------------------- #
@@ -572,8 +632,9 @@ class Main(object):
         self.rulesManager.init_rules_file_check()
 
         # Provide App Menu
-        appuifw.app.menu = [(u"Send Pulse", self.init_client_and_send),
-                            (u"Listen Mode", self.initServer),
+        appuifw.app.menu = [(u"Send Pulse", self.client_send_swarm),
+                            (u"Send Message", self.enter_send_message),
+                            (u"Refresh Swarm List", self.discovery_callback),
                             (u"Pulse Rules", ((u"Modify Rules", self.rulesManager.modify_pulse_ruleset),
                                               (u"Send Rules", self.rulesManager.modify_pulse_ruleset)))]
 
@@ -593,25 +654,38 @@ class Main(object):
         # If currentlySearching skip auto-discovery
         if( self.btClient is not None ):
             if( self.btClient.currentSearching == True ):
-                print u"Already discovering, skipping"
+                #1print u"Already discovering, skipping"
+                self.mainGUI.drawText("Already discovering, skipping\n")
+                self.mainGUI.reDrawGUI()
+
             else:
-                print u"Running discovery.."
+                #1print u"Running discovery.."
+                self.mainGUI.drawText("Running discovery..\n")
+                self.mainGUI.reDrawGUI()
                 try:
                     self.btClient.btSearch()
                 except:
-                    print u"Could not run discovery."
+                    #1print u"Could not run discovery."
+                    self.mainGUI.drawText("Could not run discovery\n")
+                    self.mainGUI.reDrawGUI()
         else:
-            print u"Running discovery.."
+            #1print u"Running discovery.."
+            self.mainGUI.drawText("Starting client & Running discovery..\n")
+            self.mainGUI.reDrawGUI()
             try:
                 self.initClient()
                 self.btClient.btSearch()
             except:
-                print u"Could not run discovery."
+                #1print u"Could not run discovery."
+                self.mainGUI.drawText("Could not run discovery\n")
+                self.mainGUI.reDrawGUI()
 
         # Restart timer
         #1self.start_discovery_timer(False)
 
-        print u"Listening for incoming..."
+        #1print u"Listening for incoming..."
+        self.mainGUI.drawText("Listening for incoming...\n")
+        self.mainGUI.reDrawGUI()
 
     # Periodically scan for devices and update Swarm List
     def start_discovery_timer(self, first):
@@ -656,20 +730,6 @@ class Main(object):
     def initClient(self):
         global FIRST_DEVICE_SCAN_DONE
 
-        """# If btServer is actively listening then stop it
-        try:
-            # If btServer exists
-            if self.btServer is not None:
-                # Temp remove this - other socket could be causing crash
-                #1self.btServer = None
-                #1print u"Destroyed server"
-                # If its set to actively listen
-                if( self.btServer.activeSetting == True ):
-                    self.btServer.activeSetting = False
-                    print u"listening server paused"
-        except:
-            print u"Error disabling listening socket"""
-
         # Start new instance of BTClientClass if doesnt exist
         if self.btClient is None:
             try:
@@ -681,19 +741,37 @@ class Main(object):
             self.btClient.btSearch()
         else:
             pass
-            #1self.start_discovery_timer()
+
+    # Enter send message - prompt for user message to send
+    def enter_send_message(self):
+        messageData = appuifw.query(u"Type word or message:", "text")
+        preparedMessage = u"M" + messageData
+        self.client_send_swarm(preparedMessage)
+        #1self.mainGUI.drawText("Sent: %s\n" %preparedMessage)
+        #1self.mainGUI.reDrawGUI()
 
     # Send to Swarm function
-    def client_send_swarm(self):
-        try:
-            self.btClient.sendToSwarm()
-        except Exception, e:
-            print u"Cannot sendToSwarm (from client_send_swarm): %s" %e
+    def client_send_swarm(self, message = "Pulse"):
+        # Check btClient exists (not to overwrite)
+        if self.btClient is None:
+            self.initClient()
+            self.mainGUI.drawText("Initing Client\n")
+            self.mainGUI.reDrawGUI()
+
+        if( self.btClient.currentSearching == True ):
+            self.mainGUI.drawText("Busy discovering, skipping..\n")
+            self.mainGUI.reDrawGUI()
+        else:
+            try:
+                self.btClient.sendToSwarm(message)
+            except Exception, e:
+                self.mainGUI.drawText("Cannot sendToSwarm (from client_send_swarm): %s\n" %e)
+                self.mainGUI.reDrawGUI()
 
             #1self.btClient.sendToSwarm()
 
     # FOR MENU USE - INIT CLIENT & SEND SWARM -----------
-    def init_client_and_send(self):
+    """def init_client_and_send(self):
         
         # STOP Discovery timer if running
         self.discov_timer.cancel()
@@ -709,7 +787,7 @@ class Main(object):
             self.client_send_swarm()
             
         # Start discover timer
-        self.start_discovery_timer(False)
+        #1self.start_discovery_timer(False)"""
 
     # Exit function -----------------
     def set_exit(self):
