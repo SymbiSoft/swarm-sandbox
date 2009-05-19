@@ -420,6 +420,7 @@ class BTServerClass(object):
     # Start listening - Open listening socket - returns serverconn
     def listenForConnection(self):
         channel = socket.bt_rfcomm_get_available_server_channel(self.serverSocket)
+        #1channel = 8
         self.serverSocket.bind(("", channel))
         self.serverSocket.listen(1)
         socket.bt_advertise_service(u"btchat", self.serverSocket, True, socket.RFCOMM)
@@ -503,6 +504,7 @@ class BTClientClass(object):
             #1print u"Could not connect to %s, skipping" %hostName
             self.myMainTextGUI.drawText("Could not connect to %s, skipping\n" %hostName)
             self.myMainTextGUI.reDrawGUI()
+            self.CONNECTED = False;
             return False
         
         #1sock.send("HELP ME")
