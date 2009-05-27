@@ -60,7 +60,7 @@ SWARM_DICT = {"Benjee E71": "00:25:48:96:a5:03",
 port = 5
 
 # Set Globals for Maintaining SWARM device list
-SCAN_INTERVAL = 120
+SCAN_INTERVAL = 45
 START_SCAN_DELAY = random.randrange(10, 120)
 FIRST_DEVICE_SCAN_DONE = False
 THE_SWARM_DICT = {}
@@ -68,7 +68,7 @@ THE_SWARM_DICT = {}
 # This class manages the GUI of the app
 class myGUI(object):
     def __init__(self):
-        appuifw.app.title = u"Swarm Sandbox v0.1"
+        appuifw.app.title = u"Swarm Sandbox v0.2"
         appuifw.app.screen = "normal"
 
         # Create MAIN UI Text -------------
@@ -117,31 +117,31 @@ class ManageRulesClass(object):
 
         if (self.PULSE_VIBRATE == True):
            #1print "Vibrate Rule: ON"
-           self.textGUI.drawText("Vibrate Rule: ON\n")
+           self.textGUI.drawText("Inform Mode: ON\n")
         else:
            #1print "Vibrate Rule: OFF"
-           self.textGUI.drawText("Vibrate Rule: OFF\n")
+           self.textGUI.drawText("Inform Mode: OFF\n")
 
         if (self.PULSE_FLASH == True):
            #1print "Flash Rule: ON"
-           self.textGUI.drawText("Flash Rule: ON\n")
+           self.textGUI.drawText("Firefly Mode: ON\n")
         else:
            #1print "Flash Rule: OFF"
-           self.textGUI.drawText("Flash Rule: OFF\n")
+           self.textGUI.drawText("Firefly Mode: OFF\n")
 
         if (self.PULSE_SNAP == True):
            #1print "Snap Rule: ON"
-           self.textGUI.drawText("Snap Rule: ON\n")
+           self.textGUI.drawText("Swarm Search Mode: ON\n")
         else:
            #1print "Snap Rule: OFF"
-           self.textGUI.drawText("Snap Rule: OFF\n")
+           self.textGUI.drawText("Swarm Search Mode: OFF\n")
            
         if (self.PULSE_TONE == True):
            #1print "Tone Rule: ON"
-           self.textGUI.drawText("Speech Rule: ON\n")
+           self.textGUI.drawText("Communicate Mode: ON\n")
         else:
            #1print "Tone Rule: OFF"
-           self.textGUI.drawText("Speech Rule: OFF\n")
+           self.textGUI.drawText("Communicate Mode: OFF\n")
            
         #1print u"--------------"
         self.textGUI.drawText("---------\n")
@@ -235,7 +235,7 @@ class ManageRulesClass(object):
 
         # Present selection list to user
         VIBRATE_CHOSEN, FLASH_CHOSEN, SNAP_CHOSEN, TONE_CHOSEN = 0, 1, 2, 3
-        L = [u"Vibrate Rule", u"Flash Rule", u"Snap Rule", u"Speech Rule"]
+        L = [u"Inform Mode", u"Firefly Mode", u"Swarm Search Mode", u"Communicate Mode"]
         aRulesTuple = appuifw.multi_selection_list(L, style='checkbox', search_field=0)
         aRulesList = list(aRulesTuple)
 
@@ -316,6 +316,8 @@ class BTServerClass(object):
         except Exception, error:
             self.mainTextGUI.drawText("Error running vibrate: %s\n" % str(error))
             self.mainTextGUI.reDrawGUI()
+            
+        appuifw.note(u"Inform Mode", "info")
 
     def flashMe(self):
         try:
@@ -625,6 +627,7 @@ class Main(object):
         self.discov_timer = e32.Ao_timer()
         self.btServer = None
         self.btClient = None
+        self.discov_timer_active = False
         
          # Create instance of myGUI manager
         self.mainGUI = myGUI()
@@ -636,9 +639,10 @@ class Main(object):
         # Provide App Menu
         appuifw.app.menu = [(u"Send Pulse", self.client_send_swarm),
                             (u"Send Message", self.enter_send_message),
+                            (u"Toggle Pulse Timer", self.send_pulse_timer),
                             (u"Refresh Swarm List", self.discovery_callback),
-                            (u"Pulse Rules", ((u"Modify Rules", self.rulesManager.modify_pulse_ruleset),
-                                              (u"Send Rules", self.rulesManager.modify_pulse_ruleset)))]
+                            (u"Swarm Mode", ((u"Change Mode", self.rulesManager.modify_pulse_ruleset),
+                                              (u"Change Entire Swarm Mode", self.rulesManager.modify_pulse_ruleset)))]
 
         self.menuMain = appuifw.app.menu
 
@@ -703,6 +707,40 @@ class Main(object):
             self.discov_timer.cancel()
             self.discov_timer.after(SCAN_INTERVAL, self.discovery_callback)
             print u"Discovering devices in %s seconds" %SCAN_INTERVAL
+    
+    
+    # Send pulse callback -------------------------------
+
+    def send_pulse_callback(self):
+        self.client_send_swarm()
+
+        try:
+            self.btServer.triggerPulse("Pulse")
+        except:
+            self.mainGUI.drawText("Could not trigger local pulse\n")
+            self.mainGUI.reDrawGUI()
+
+        self.discov_timer_active = False
+        self.send_pulse_timer()
+
+    # Send pulse timer
+    def send_pulse_timer(self):
+        global SCAN_INTERVAL
+        
+        if( self.discov_timer_active == False ):
+            self.discov_timer.cancel()
+            self.discov_timer_active = True
+            self.discov_timer.after(SCAN_INTERVAL, self.send_pulse_callback)
+
+            self.mainGUI.drawText("Pulse Timer Active (%s secs)\n" %SCAN_INTERVAL)
+            self.mainGUI.reDrawGUI()
+
+        elif( self.discov_timer_active == True ):
+            self.discov_timer_active = False
+            self.discov_timer.cancel()
+            self.mainGUI.drawText("Pulse Timer Deactivated.\n")
+
+    # ---------------------------------------------------
 
     # Start Server class and start listening
     # Parsing instance of rulesManager so Server can access Local active rules
